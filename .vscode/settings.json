@@ -1,0 +1,5 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/env/Scripts/python.exe",
+  "python.pythonPath": "${workspaceFolder}/env/Scripts/python.exe",
+  "behave.command": "${workspaceFolder}/env/Scripts/python.exe -m behave"
+}

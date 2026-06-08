@@ -1,0 +1,17 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Behave: Run feature (Debug)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/env/Scripts/python.exe",
+      "console": "integratedTerminal",
+      "args": ["-m", "behave", "${file}", "-f", "pretty"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "HEADLESS": "false"
+      }
+    }
+  ]
+}

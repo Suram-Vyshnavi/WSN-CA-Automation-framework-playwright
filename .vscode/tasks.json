@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Behave: Run current feature",
+      "type": "shell",
+      "command": "${workspaceFolder}/env/Scripts/python.exe",
+      "args": ["-m", "behave", "${file}", "-f", "pretty"],
+      "options": {
+        "env": {
+          "HEADLESS": "false"
+        }
+      },
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
