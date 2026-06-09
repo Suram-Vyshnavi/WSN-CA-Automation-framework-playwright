@@ -62,6 +62,71 @@ def step_click_questionnaires_section(context):
     _home_page(context).click_questionnaires_section()
 
 
+@then("user clicks on interests card in questionnaires section and clicks on reattempt button")
+def step_click_interests_card_questionnaire_reattempt(context):
+    _home_page(context).open_interests_questionnaire_reattempt()
+
+
+@then("user clicks on questionnaries choose button and clicks on question cards and click on next button")
+def step_choose_questionnaire_and_answer_first(context):
+    _home_page(context).choose_questionnaire_and_answer_first_question()
+
+
+@then("user attempts all the questions in interests section and clicks on next button")
+def step_answer_all_interests_questions(context):
+    _home_page(context).answer_all_interests_questions()
+
+
+@then("user clicks start aptitudes and answer all the questions in aptitudes section and clicks on next button")
+def step_start_aptitudes_and_answer_all(context):
+    _home_page(context).start_aptitudes_and_answer_all()
+
+
+@then("user clicks on start values and answer all the questions in values section and clicks on next button")
+def step_start_values_and_answer_all(context):
+    _home_page(context).start_values_and_answer_all()
+
+
+@then("user clicks on interests card and clicks on reattempt button")
+def step_click_interests_card_and_reattempt(context):
+    _home_page(context).click_interests_card_and_reattempt()
+
+
+@then("user clicks on aptitudes card and clicks on reattempt button")
+def step_click_aptitudes_card_and_reattempt(context):
+    _home_page(context).click_aptitudes_card_and_reattempt()
+
+
+@then("user clicks on values card and clicks on reattempt button")
+def step_click_values_card_and_reattempt(context):
+    _home_page(context).click_values_card_and_reattempt()
+
+
+@then("user slides the slider to 7 or 8 or 8 or 7 and clicks on next button")
+def step_slide_slider_and_click_next(context):
+    _home_page(context).slide_slider_and_click_next_through_questions()
+
+
+@then("user clicks on submit button in interests section")
+def step_click_submit_interests_section(context):
+    _home_page(context).click_submit_questionnaire()
+
+
+@then("user clicks on submit button in aptitudes section")
+def step_click_submit_aptitudes_section(context):
+    _home_page(context).click_submit_questionnaire()
+
+
+@then("user clicks on submit button in values section")
+def step_click_submit_values_section(context):
+    _home_page(context).click_submit_questionnaire()
+
+
+@then("user clicks on backarrow button")
+def step_click_back_arrow(context):
+    _home_page(context).click_back_arrow()
+
+
 @then("user clicks on review button in aptitudes section")
 def step_click_first_aptitudes_review_button(context):
     _home_page(context).complete_aptitudes_first_flow()
@@ -98,15 +163,25 @@ def step_click_search_roles(context):
     _home_page(context).click_search_roles()
 
 
-@then("user enters jobrole and add the first job as favourite")
-def step_enter_jobrole_and_add_first_job_as_favourite(context):
+@then("user enters jobrole and add the first job as add saved")
+def step_enter_jobrole_and_add_first_job_as_saved(context):
     job_role = "Automation"
-    _home_page(context).enter_jobrole_and_add_first_job_as_favourite(job_role)
+    _home_page(context).enter_jobrole_and_add_first_job_as_saved(job_role)
 
 
-@then("user clicks Favourites and validates the added job")
-def step_click_favourites_and_validate_added_job(context):
-    _home_page(context).click_favourites_and_validate_added_job()
+@then("user clicks on save menu header and validates the saved job")
+def step_click_save_menu_header_and_validate_saved_job(context):
+    _home_page(context).click_save_menu_header_and_validate_saved_job()
+
+
+@then("user clicks on compare roles and validates the compare roles header")
+def step_click_compare_roles_and_validate_header(context):
+    _home_page(context).click_compare_roles_and_validate_header()
+
+
+@then("user clicks on first and second checkbox in search results and clicks on compare button")
+def step_click_first_second_checkbox_and_compare(context):
+    _home_page(context).click_first_second_checkbox_and_compare()
 
 
 @then("user clicks on share report and click and validates the share report options")
@@ -122,6 +197,16 @@ def step_validate_share_report_tabs(context):
 @then("user clicks on Favourites and removes the added job from favourites")
 def step_click_favourites_and_remove_added_job(context):
     _home_page(context).click_favourites_and_remove_added_job()
+
+
+@then("user clicks on help icon")
+def step_click_help_icon(context):
+    _home_page(context).click_help_icon()
+
+
+@then("user clicks on about icon")
+def step_click_about_icon(context):
+    _home_page(context).click_about_icon()
 
 
 @then("user logout")

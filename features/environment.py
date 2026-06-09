@@ -1,8 +1,25 @@
+import os
+from pathlib import Path
+
 import allure
 from allure_commons.types import AttachmentType
 from pages.student.login_page import LoginPage
 from utils.playwright_factory import PlaywrightFactory
 from utils.config import Config
+from utils.wf_html_formatter import apply_branding
+
+# Brand the stock behave HTML formatter (red/orange + full status totals) so the
+# `-f behave_html_formatter:HTMLFormatter` command produces the themed report.
+apply_branding()
+
+
+def _resolve_report_dir(context):
+    """Return the Allure results directory passed to behave via -o, if any."""
+    for output in getattr(context.config, "outputs", []) or []:
+        name = getattr(output, "name", None)
+        if name and name not in ("-", "stdout", "stderr"):
+            return os.path.abspath(name)
+    return None
 
 
 def before_scenario(context, scenario):
@@ -27,3 +44,10 @@ def after_scenario(context, scenario):
     context.context.close()
     context.browser.close()
     context.playwright.stop()
+
+    report_dir = _resolve_report_dir(context)
+    if report_dir:
+        link = Path(report_dir).as_uri()
+        print(f"Allure report generated at: {link}")
+    else:
+        print("Allure report directory not found (run behave with -o <dir>).")

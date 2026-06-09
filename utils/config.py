@@ -12,5 +12,5 @@ class Config:
     else:
         BASE_URL = "https://dev.careeradvisor.wadhwanifoundation.org/en"
 
-    USERNAME="ca-st1p-may4@yopmail.com"
+    USERNAME="ca-automation@yopmail.com"
     PASSWORD="Demo@123"

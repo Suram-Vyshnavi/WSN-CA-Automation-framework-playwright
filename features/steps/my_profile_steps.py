@@ -34,7 +34,13 @@ def step_edit_profile_details(context):
         "city": page.get_city(),
         "grade": page.get_grade(),
     }
-    page.edit_profile_details(EDITED_FIRST_NAME)
+    # Edit to values that differ from the captured original so the change is real
+    # and the revert can be verified against the original. Picking the opposite of
+    # whatever the original is keeps the test self-healing: a run that died mid-edit
+    # in the past can no longer permanently lock the profile into the "edited" state.
+    edit_state = "Telangana" if context.original_profile["state"] != "Telangana" else "Karnataka"
+    edit_city = "Hyderabad" if context.original_profile["city"] != "Hyderabad" else "Bengaluru"
+    page.edit_profile_details(EDITED_FIRST_NAME, edit_state, edit_city)
 
 
 @then("user revert back the changes to its orginal details")
@@ -42,6 +48,8 @@ def step_revert_profile_details(context):
     page = _my_profile_page(context)
     original = context.original_profile
     page.open_my_profile()
-    page.revert_profile_details(original["first name"], original["city"])
+    page.revert_profile_details(
+        original["first name"], original["state"], original["city"]
+    )
     # Confirm name, state, city and grade are all back to their original values.
     page.verify_reverted(original)

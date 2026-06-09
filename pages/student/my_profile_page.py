@@ -38,6 +38,21 @@ class MyProfilePage(BasePage):
                 raise AssertionError(f"{name} not visible: {selector}")
             return False
 
+    def _open_select(self, dropdown_selector, name, timeout=10000):
+        # Open an ant-select and confirm its option list actually rendered. A single
+        # click is unreliable: if the dropdown was already open (e.g. left open by a
+        # prior interaction), the click TOGGLES it shut and every option lookup then
+        # fails. Retry the open once if no options appear. This is what previously
+        # left the profile stuck in Hindi when the language revert silently failed.
+        options = self.page.locator(".ant-select-item-option")
+        self._click(dropdown_selector, name=name)
+        try:
+            options.first.wait_for(state="visible", timeout=3000)
+            return
+        except Exception:
+            self._click(dropdown_selector, name=name)
+            options.first.wait_for(state="visible", timeout=timeout)
+
     def _select_option(self, dropdown_selector, option_selector, dropdown_name, option_name):
         # Open the field, then wait for the target option to render in its portal
         # rather than relying on an immediate count() check (which races the
@@ -87,21 +102,32 @@ class MyProfilePage(BasePage):
             return True
 
     # ------------------------------------------------------------------ navigation
-    def click_my_profile_icon(self):
-        # Open the header dropdown, retrying once: after a Hindi save the page
-        # re-renders and the first click can land before the trigger is wired up.
-        self._click(self.locators.MY_PROFILE_ICON, timeout=15000, name="My Profile icon")
-        try:
-            self.page.locator(self.locators.PROFILE_MENU_ITEM).first.wait_for(
-                state="visible", timeout=5000
-            )
-        except Exception:
+    def _open_profile_menu(self):
+        # Open the header avatar dropdown idempotently. Clicking the avatar TOGGLES
+        # the dropdown, so a blind "retry click" can close one that already opened
+        # (after a Hindi save the re-render makes timing unpredictable). Only click
+        # while the menu item is not yet visible; retry the open a few times.
+        menu_item = self.page.locator(self.locators.PROFILE_MENU_ITEM)
+        for _ in range(4):
+            if menu_item.count() and menu_item.first.is_visible():
+                return
             self._click(self.locators.MY_PROFILE_ICON, timeout=10000, name="My Profile icon")
+            try:
+                menu_item.first.wait_for(state="visible", timeout=4000)
+                return
+            except Exception:
+                continue
+        raise AssertionError("My Profile menu did not open")
+
+    def click_my_profile_icon(self):
+        self._open_profile_menu()
 
     def click_my_profile(self):
-        # The "My Profile" item is scoped to the open dropdown so it does not collide
-        # with the page heading. Match English text, then the Hindi-UI text, then
-        # fall back to the first item in the dropdown (language-independent).
+        # Ensure the dropdown is open (idempotent), then click the "My Profile" item.
+        # Scope it to the open dropdown so it does not collide with the page heading.
+        # Match English text, then the Hindi-UI text, then the first dropdown item
+        # (language-independent).
+        self._open_profile_menu()
         menu = ("//div[contains(@class,'ant-dropdown') and "
                 "not(contains(@class,'ant-dropdown-hidden'))]")
         self._click_first_available(
@@ -116,7 +142,6 @@ class MyProfilePage(BasePage):
         self._wait_visible(self.locators.FIRST_NAME_INPUT, name="My Profile page")
 
     def open_my_profile(self):
-        self.click_my_profile_icon()
         self.click_my_profile()
 
     # ------------------------------------------------------------------ read
@@ -149,20 +174,15 @@ class MyProfilePage(BasePage):
         except Exception:
             loc.fill(new_name, timeout=10000, force=True)
 
-    def change_state_to_telangana(self):
+    def select_state(self, state_name):
+        # Generic state selection. State names are Latin in both UIs, so we match by
+        # name; this lets the revert restore whatever state was captured as original
+        # rather than assuming a single hard-coded baseline.
         self._select_option(
             self.locators.SELECT_STATE,
-            self.locators.SELECT_STATE_TELANGANA_OPTION,
+            self.locators.STATE_OPTION.format(state=state_name),
             "State dropdown",
-            "Telangana option",
-        )
-
-    def change_state_to_karnataka(self):
-        self._select_option(
-            self.locators.SELECT_STATE,
-            self.locators.SELECT_STATE_OPTION,
-            "State dropdown",
-            "Karnataka option",
+            f"{state_name} option",
         )
 
     def set_city(self, city_name):
@@ -199,22 +219,25 @@ class MyProfilePage(BasePage):
         )
 
     def select_platform_language_hindi(self):
-        self._select_option(
-            self.locators.PLATFORM_LANGUAGE,
-            self.locators.HINDI_LANGUAGE,
-            "Platform language dropdown",
-            "Hindi option",
+        # Open reliably, then pick Hindi by its localized option label, falling back
+        # to the second option (Hindi in either UI).
+        self._open_select(self.locators.PLATFORM_LANGUAGE, "Platform language dropdown")
+        self._click_first_available(
+            [
+                self.locators.HINDI_OPTION,
+                self.locators.SELECT_OPTION_ITEM + "[2]",
+            ],
+            "Hindi language option",
         )
 
     def select_platform_language_english(self):
         # Runs during revert when the UI may already be Hindi, where "English"
-        # renders as "अंग्रेज़ी". Try the English label, then the Hindi-UI label,
-        # then the first language option (English in either UI).
-        self._click(self.locators.PLATFORM_LANGUAGE, name="Platform language dropdown")
+        # renders as "अंग्रेज़ी". Open reliably, then pick English by its localized
+        # option label, falling back to the first option (English in either UI).
+        self._open_select(self.locators.PLATFORM_LANGUAGE, "Platform language dropdown")
         self._click_first_available(
             [
-                self.locators.ENGLISH_LANGUAGE,
-                self.locators.ENGLISH_LANGUAGE_HINDI_UI,
+                self.locators.ENGLISH_OPTION,
                 self.locators.SELECT_OPTION_ITEM,
             ],
             "English language option",
@@ -233,17 +256,19 @@ class MyProfilePage(BasePage):
         )
 
     # ------------------------------------------------------------------ flows
-    def edit_profile_details(self, new_name):
+    def edit_profile_details(self, new_name, new_state, new_city):
         self.edit_first_name(new_name)
-        self.change_state_to_telangana()
-        self.set_city("Hyderabad")
+        self.select_state(new_state)
+        self.set_city(new_city)
         self.select_grade_class_xi()
         self.select_platform_language_hindi()
         self.click_save()
 
-    def revert_profile_details(self, original_name, original_city):
+    def revert_profile_details(self, original_name, original_state, original_city):
+        # Restore the captured original values (state included) so the profile
+        # returns to exactly what it was, regardless of the starting state.
         self.edit_first_name(original_name)
-        self.change_state_to_karnataka()
+        self.select_state(original_state)
         self.set_city(original_city)
         self.select_grade_class_x()
         self.select_platform_language_english()
