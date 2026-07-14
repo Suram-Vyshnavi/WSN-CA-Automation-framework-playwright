@@ -8,9 +8,17 @@ class Config:
     USER_TYPE.lower()  # Ensure it's in lowercase for consistency
     if "prod" in USER_TYPE:
         BASE_URL = "https://web.careeradvisor.wadhwanifoundation.org/en"
-        
+        ENVIRONMENT = "prod"
     else:
         BASE_URL = "https://dev.careeradvisor.wadhwanifoundation.org/en"
+        ENVIRONMENT = "dev"
 
-    USERNAME="ca-automation@yopmail.com"
-    PASSWORD="Demo@123"
+    # Title shown at the top of the generated HTML report.
+    REPORT_TITLE = f"behave report for {ENVIRONMENT} environment"
+    # Credentials based on user type
+    if USER_TYPE == "dev":
+        USERNAME = "ca-automation@yopmail.com"
+        PASSWORD = "Demo@123"
+    elif USER_TYPE == "prod":
+        USERNAME = "ca_automation@yopmail.com"
+        PASSWORD = "Demo@123"

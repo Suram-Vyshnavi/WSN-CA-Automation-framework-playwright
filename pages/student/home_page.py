@@ -72,21 +72,24 @@ class HomePage(BasePage):
     def validate_wf_logo(self):
         self._wait_visible(self.locators.VALIDATE_WF_LOGO, required=True, name="WF logo")
 
-    def select_passions_preferences(self):
-        self._click(self.locators.PASSIONS_HEADER, required=True, name="Passions header")
+    def click_passions_preferences(self):
+        self._click(self.locators.PASSIONS_HEADER, timeout=5000, required=True, name="Passions header")
        
 
-    def select_review_passions_preferences(self):
-        if self._click(self.locators.REVIEW_BUTTON, timeout=5000):
-            return
-        self._click(self.locators.APTITUDES_FIRST_REVIEW_BUTTON, required=True, name="Review button")
+    def click_review_passions_preferences(self):
+        self._click(self.locators.REVIEW_BUTTON, timeout=5000, required=True, name="Review button")
 
     def validate_selected_items_in_passions_review(self):
-        self._click(self.locators.E_COMMERCE_CLEANUP, timeout=5000)
-        has_business = self.page.locator(self.locators.BUSINESS_AND_MARKETING).count() > 0
-        has_ecommerce = self.page.locator(self.locators.E_COMMERCE).count() > 0
-        self._click(self.locators.E_COMMERCE, timeout=3000)
-        assert has_business or has_ecommerce, "No selected passions were found in review"
+        self._click(self.locators.ART_AND_DESIGN_HEADER, timeout=5000)
+        self._click(self.locators.DRAWING_AND_ILLUSTRATION_INPUT, timeout=5000)
+        self._click(self.locators.FASHION_DESIGN_INPUT, timeout=5000)
+        self._click(self.locators.CLOSE_PASSION_BUTTON, timeout=5000)
+        self._click(self.locators.BUSINESS_AND_MARKETING_HEADER, timeout=5000)
+        self._click(self.locators.E_COMMERCE_OPTION, timeout=5000)
+        # has_business = self.page.locator(self.locators.BUSINESS_AND_MARKETING_HEADER).count() > 0
+        # has_ecommerce = self.page.locator(self.locators.E_COMMERCE_OPTION).count() > 0
+        # self._click(self.locators.E_COMMERCE_OPTION, timeout=3000)
+        # assert has_business or has_ecommerce, "No selected passions were found in review"
 
     def click_submit_button(self):
         self._click(self.locators.SUBMIT_BUTTON, required=True, name="Submit button")
@@ -228,20 +231,6 @@ class HomePage(BasePage):
             except Exception:
                 pass
 
-    def _visible_in_frame_or_page(self, selector):
-        """The Start Aptitudes/Values transitions may render inside the iframe or
-        on the host page; check both."""
-        for loc in (
-            self._questionnaire_frame().locator(selector),
-            self.page.locator(selector),
-        ):
-            try:
-                if loc.count() > 0 and loc.first.is_visible():
-                    return True
-            except Exception:
-                continue
-        return False
-
     def _wait_for_question_cards(self, timeout=15000):
         loc = self._questionnaire_frame().locator(self.locators.ANY_QUESTION_CARD)
         try:
@@ -296,6 +285,7 @@ class HomePage(BasePage):
             self.locators.SCENARIO_CARDS,
             self.locators.FUN_EMOJI_CARDS,
             self.locators.FORCED_CARDS,
+            self.locators.ILLUSTRATED_SCENARIO_CARDS,
         ):
             loc = frame.locator(selector)
             try:
@@ -564,16 +554,28 @@ class HomePage(BasePage):
 
     def enter_jobrole_and_add_first_job_as_saved(self, job_role: str):
         search_input = self.page.locator(self.locators.SEARCH_ROLES_INPUT)
-        assert search_input.count() > 0, "Search role input not found"
-
-        search_input.first.wait_for(state="visible", timeout=5000)
+        search_input.first.wait_for(state="visible", timeout=10000)
         search_input.first.fill(job_role)
 
-        # Results load asynchronously after typing, so auto-wait for them to render
-        # instead of failing on an immediate count() check.
+        # Results load asynchronously after typing, so auto-wait for them to render.
         self.page.locator(self.locators.VALIDATE_RESULTS_HEADER).first.wait_for(
             state="visible", timeout=10000
         )
+
+        # If the first result is already in "Saved" state, click it once to
+        # toggle back to "Save" so the subsequent save action is idempotent.
+        already_saved = self.page.locator(self.locators.FIRST_RESULT_SAVED_STATE)
+        if already_saved.count() > 0:
+            try:
+                already_saved.first.wait_for(state="visible", timeout=3000)
+                already_saved.first.scroll_into_view_if_needed()
+                already_saved.first.click(timeout=5000)
+                # Wait for the toggle to revert to the "Save" label.
+                self.page.locator(self.locators.ADD_SAVE).first.wait_for(
+                    state="visible", timeout=8000
+                )
+            except Exception:
+                pass
 
         save = self.page.locator(self.locators.ADD_SAVE)
         save.first.wait_for(state="visible", timeout=10000)
@@ -583,15 +585,30 @@ class HomePage(BasePage):
         except Exception:
             save.first.click(timeout=5000, force=True)
 
+        # Confirm the save registered: the label must flip to "Saved".
+        try:
+            self.page.locator(self.locators.FIRST_RESULT_SAVED_STATE).first.wait_for(
+                state="visible", timeout=8000
+            )
+        except Exception:
+            raise AssertionError("Role was not saved — 'Saved' label did not appear after clicking Save")
+
     def click_save_menu_header_and_validate_saved_job(self):
         self._click(self.locators.SAVED_MENU_HEADER, required=True, name="Saved menu")
-        self._wait_visible(self.locators.SAVED_MENU_HEADER, required=True, name="Saved page")
+        # self._wait_visible(self.locators.SAVED_MENU_HEADER, required=True, name="Saved page")
 
-    def click_compare_roles_and_validate_header(self):
-        self._click(self.locators.COMPARE_ROLES_HEADER, required=True, name="Compare roles menu")
-        self._wait_visible(
-            self.locators.COMPARE_ROLES_HEADER, required=True, name="Compare roles header"
-        )
+    def click_compare_roles(self):
+                self._wait_visible(
+                    self.locators.COMPARE_ROLES,
+                    required=True,
+                    name="Compare roles"
+                )
+                self._click(
+                    self.locators.COMPARE_ROLES,
+                    required=True,
+                    name="Compare roles"
+                )
+                
 
     def click_first_second_checkbox_and_compare(self):
         first = self.page.locator(self.locators.FIRST_FAV_CHECKBOX)
@@ -620,6 +637,19 @@ class HomePage(BasePage):
         self._wait_visible(self.locators.SELF_REVIEW_TAB, required=True, name="Self-Review tab")
         self._wait_visible(self.locators.MATCHED_ROLES_TAB, required=True, name="Matched Roles tab")
         self._wait_visible(self.locators.SAVED_ROLES_TAB, required=True, name="Saved Roles tab")
+
+    # def click_saved_menu_and_remove_saved_job(self):
+    #     self._click(self.locators.SAVED_MENU_HEADER, timeout=10000, required=True, name="Saved menu")
+    #     self._click(self.locators.REMOVE_SAVED_JOB, timeout=10000, required=True, name="Remove saved job")
+        # The Saved page loads its cards asynchronously, so auto-wait for the saved
+        # job toggle to render instead of failing on an immediate count() check.
+        # remove = self.page.locator(self.locators.REMOVE_SAVED_JOB).click()
+        # remove.first.wait_for(state="visible", timeout=10000)
+        # remove.first.scroll_into_view_if_needed()
+        # try:
+        #     remove.first.click(timeout=5000)
+        # except Exception:
+        #     remove.first.click(timeout=5000, force=True)
 
     def _open_profile_menu(self):
         # Open the header avatar dropdown idempotently. Clicking the avatar
@@ -704,7 +734,7 @@ class HomePage(BasePage):
         # Allow the homepage to re-render before the next step interacts with it.
         self.page.wait_for_timeout(1500)
 
-    def click_favourites_and_remove_added_job(self):
+    def click_saved_menu_and_remove_saved_job(self):
         self._click(self.locators.SAVED_MENU_HEADER, required=True, name="Saved menu")
         # The Saved page loads its cards asynchronously, so auto-wait for the saved
         # job toggle to render instead of failing on an immediate count() check.

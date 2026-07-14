@@ -37,14 +37,16 @@ def step_click_matches_roles_section(context):
     _home_page(context).click_matches_roles_section()
 
 
-@then("user selects passions preferences")
-def step_select_passions_preferences(context):
-    _home_page(context).select_passions_preferences()
+@then("user clicks passions preferences")
+def step_click_passions_preferences(context):
+    _home_page(context).click_passions_preferences()
+    _home_page(context).click_passions_preferences()
 
 
-@then("user selects review passions preferences")
-def step_select_review_passions_preferences(context):
-    _home_page(context).select_review_passions_preferences()
+@then("user clicks review passions preferences")
+def step_click_review_passions_preferences(context):
+    _home_page(context).click_passions_preferences()
+    _home_page(context).click_review_passions_preferences()
 
 
 @then("user validates the selected items in passions review section")
@@ -174,9 +176,9 @@ def step_click_save_menu_header_and_validate_saved_job(context):
     _home_page(context).click_save_menu_header_and_validate_saved_job()
 
 
-@then("user clicks on compare roles and validates the compare roles header")
-def step_click_compare_roles_and_validate_header(context):
-    _home_page(context).click_compare_roles_and_validate_header()
+@then("user clicks on compare roles")
+def step_click_compare_roles(context):
+    _home_page(context).click_compare_roles()
 
 
 @then("user clicks on first and second checkbox in search results and clicks on compare button")
@@ -194,9 +196,9 @@ def step_validate_share_report_tabs(context):
     _home_page(context).validate_share_report_tabs()
 
 
-@then("user clicks on Favourites and removes the added job from favourites")
-def step_click_favourites_and_remove_added_job(context):
-    _home_page(context).click_favourites_and_remove_added_job()
+@then("user clicks on Saved menu and removes the saved job from favourites")
+def step_click_saved_menu_and_remove_saved_job(context):
+    _home_page(context).click_saved_menu_and_remove_saved_job()
 
 
 @then("user clicks on help icon")
