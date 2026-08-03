@@ -37,11 +37,16 @@ class HomePage(BasePage):
                 return False
 
     def _wait_visible(self, selector, timeout=7000, required=False, name="element"):
+        # NOTE: this used to check loc.count() == 0 first and, if required,
+        # raise immediately without ever waiting — count() is a synchronous,
+        # instant DOM snapshot, so any element that renders even slightly
+        # after this check ran (e.g. a sticky bottom strip that appears once
+        # the rest of the page finishes loading) would fail instantly with
+        # "not found" even though it exists moments later. wait_for() itself
+        # already handles "not yet attached" the same way it handles
+        # "attached but not visible" — polling until timeout — so there is
+        # no need for a separate up-front existence check at all.
         loc = self.page.locator(selector)
-        if loc.count() == 0:
-            if required:
-                raise AssertionError(f"{name} not found: {selector}")
-            return False
         try:
             loc.first.wait_for(state="visible", timeout=timeout)
             return True
@@ -112,7 +117,7 @@ class HomePage(BasePage):
         reattempts = self.page.locator(self.locators.REATTEMPT_BUTTONS)
         if reattempts.count() > 0 and reattempts.first.is_visible():
             return
-        header = self.page.locator(self.locators.QUESTIONNAIRES_HEADER)
+        header = self.page.locator(self.locators.PROFILE_HEADER)
         header.first.wait_for(state="visible", timeout=15000)
         header.first.scroll_into_view_if_needed()
         try:
@@ -240,34 +245,22 @@ class HomePage(BasePage):
             return False
 
     def _advance_question(self):
-        """Advance past the current question inside the iframe. Intermediate
-        questions show 'Next >'; the last question of a section shows 'Submit'
-        (clicking it makes the next section's 'Start ...' button appear on the
-        host page). Returns 'next', 'submitted', or None if neither control was
-        clickable (e.g. disabled because the already-selected card was re-clicked)."""
-        frame = self._questionnaire_frame()
-        # The selection-animation overlay blocks the action button; clear it first.
+        """Selecting an answer card now auto-advances to the next question (or
+        finishes the section and navigates back to the homepage) — the app no
+        longer shows an explicit "Next >"/"Submit" control to click, unlike
+        the older UI build this loop was originally written against.
+
+        Just give the automatic transition time to settle. Section-end
+        detection is handled by the caller's caller,
+        _answer_all_scenario_questions(): its next iteration calls
+        _wait_for_question_cards() again, which naturally times out once the
+        questionnaire iframe/cards are gone (section finished), breaking that
+        loop without needing an explicit 'submitted' signal here.
+        """
+        self._dismiss_overlays()
+        self.page.wait_for_timeout(1800)
         self._clear_sc_overlay()
-        for kind, selector in (
-            ("next", self.locators.QUESTIONNAIRE_NEXT_BUTTON),
-            ("submitted", self.locators.QUESTIONNAIRE_SUBMIT_BUTTON),
-        ):
-            loc = frame.locator(selector)
-            try:
-                if loc.count() == 0 or not loc.first.is_visible():
-                    continue
-                btn = loc.first
-                try:
-                    btn.click(timeout=3000)
-                except Exception:
-                    self._clear_sc_overlay(wait_timeout=1500)
-                    btn.click(timeout=3000, force=True)
-            except Exception:
-                continue
-            # Let the next question (or the section-transition) render/settle.
-            self.page.wait_for_timeout(1200)
-            return kind
-        return None
+        return "next"
 
     def _answer_current_question(self):
         """Select an answer card for the current question (inside the iframe) and
@@ -323,11 +316,11 @@ class HomePage(BasePage):
             card = cards.nth(idx)
             try:
                 card.scroll_into_view_if_needed(timeout=3000)
-                card.click(timeout=3000)
+                card.click(timeout=15000)
             except Exception:
                 self._clear_sc_overlay(wait_timeout=1500)
                 try:
-                    card.click(timeout=3000, force=True)
+                    card.click(timeout=15000, force=True)
                 except Exception:
                     continue
             # Let the selection register and its overlay animation play out.
@@ -338,15 +331,29 @@ class HomePage(BasePage):
         return "failed"
 
     def _answer_all_scenario_questions(self):
-        """Answer every scenario question in the current section. Each question is
-        advanced with 'Next >'; the final question is submitted with 'Submit',
-        which ends the section (and surfaces the next section's 'Start ...' button
-        on the host page). Stops as soon as that Submit is clicked."""
+        """Answer every scenario question in the current section. Selecting an
+        answer card auto-advances to the next question; the loop stops once
+        _wait_for_question_cards() can no longer find any cards after a
+        retry — which happens once the section's last question is answered
+        and the app auto-navigates back to the homepage — or once a question
+        can't be answered at all.
+
+        A single missed check isn't trusted as "section over" on its own: the
+        iframe sometimes takes longer than 8s to reload between questions
+        (observed cutting sections short after ~3 questions), so one retry
+        with extra wait is given before concluding the section actually
+        ended, rather than the app just being slow to render the next one.
+        """
         max_questions = 80
         for _ in range(max_questions):
             self._dismiss_overlays()
             if not self._wait_for_question_cards(timeout=8000):
-                break
+                # Might just be a slow transition, not the real end — wait a
+                # bit longer and check once more before giving up.
+                self.page.wait_for_timeout(3000)
+                self._dismiss_overlays()
+                if not self._wait_for_question_cards(timeout=8000):
+                    break
             result = self._answer_current_question()
             if result in ("submitted", "failed"):
                 break
@@ -370,6 +377,47 @@ class HomePage(BasePage):
 
     def answer_all_interests_questions(self):
         self._answer_all_scenario_questions()
+
+    def _open_profile_assessment_and_wait_for_questions(self, card_selector, reattempt_selector, name):
+        """Open a questionnaire card's Reattempt menu, pick the 'Profile'
+        assessment option (the "How would you like to assess yourself?" modal's
+        first choice — labelled "Questionnaire" in older UI builds, now
+        relabelled "Profile"), and land on the first scenario question.
+
+        The app used to auto-advance straight from Interests into Aptitudes,
+        then Values, via a "Start Aptitudes"/"Start Values" button that
+        appeared on the host page once the previous section was submitted.
+        That button no longer appears — each section now requires the same
+        explicit Card -> Reattempt -> Profile-choose sequence Interests
+        already used, so this mirrors open_interests_questionnaire_reattempt()
+        + choose_questionnaire_and_answer_first_question() for reuse by
+        Aptitudes and Values.
+        """
+        self._expand_questionnaires_section()
+        self._click(card_selector, timeout=8000, name=f"{name} card")
+        self._click(reattempt_selector, timeout=10000, required=True, name=f"{name} Reattempt button")
+        self._dismiss_overlays()
+        self._click(
+            self.locators.QUESTIONNAIRES_CHOOSE_BUTTON,
+            timeout=10000,
+            required=True,
+            name="Profile assessment Choose button",
+        )
+        self._dismiss_overlays()
+        # Some assessments show an intermediate Retake before the first question.
+        self._click(self.locators.RETAKE_BUTTON, timeout=3000, name="Retake button")
+        self._dismiss_overlays()
+        assert self._wait_for_question_cards(timeout=20000), f"{name} questions did not load"
+
+    def _finish_section_and_settle_homepage(self):
+        """After the last scenario question is submitted, the app auto-closes
+        the question flow and navigates back to the homepage on its own (no
+        "Start <next section>" button appears anymore). Swallow any completion
+        popup and give the homepage a moment to re-render before the next
+        step (which re-expands the Profile accordion) interacts with it."""
+        self._dismiss_overlays()
+        self.click_congratulations_close_button()
+        self.page.wait_for_timeout(1500)
 
     def _activate_start_button(self, btn):
         """The Start button only becomes clickable once hovered, so mouse over it
@@ -411,14 +459,22 @@ class HomePage(BasePage):
         self._dismiss_overlays()
 
     def start_aptitudes_and_answer_all(self):
-        self._start_next_section(self.locators.START_APTITUDES, "Start Aptitudes")
-        self._wait_for_question_cards(timeout=20000)
+        self._open_profile_assessment_and_wait_for_questions(
+            self.locators.APTITUDES_CARD,
+            self.locators.APTITUDES_REATTEMPT_BUTTON,
+            "Aptitudes",
+        )
         self._answer_all_scenario_questions()
+        self._finish_section_and_settle_homepage()
 
     def start_values_and_answer_all(self):
-        self._start_next_section(self.locators.START_VALUES, "Start Values")
-        self._wait_for_question_cards(timeout=20000)
+        self._open_profile_assessment_and_wait_for_questions(
+            self.locators.VALUES_CARD,
+            self.locators.VALUES_REATTEMPT_BUTTON,
+            "Values",
+        )
         self._answer_all_scenario_questions()
+        self._finish_section_and_settle_homepage()
 
     def _adjust_question_slider(self):
         """Drive the current question's slider into the 7-8 band: from 7 step up
@@ -598,17 +654,23 @@ class HomePage(BasePage):
         # self._wait_visible(self.locators.SAVED_MENU_HEADER, required=True, name="Saved page")
 
     def click_compare_roles(self):
-                self._wait_visible(
-                    self.locators.COMPARE_ROLES,
-                    required=True,
-                    name="Compare roles"
-                )
-                self._click(
-                    self.locators.COMPARE_ROLES,
-                    required=True,
-                    name="Compare roles"
-                )
-                
+        # The "Compare roles" tab only exists on the Saved page. This used to
+        # work without navigating there explicitly because it ran right after
+        # "Search roles and save a job" inside one continuous scenario (which
+        # had already opened the Saved page). Now that they're separate
+        # Scenario blocks, before_scenario resets to the homepage before this
+        # one starts, so the Saved menu must be opened here too.
+        self._click(self.locators.SAVED_MENU_HEADER, required=True, name="Saved menu")
+        # self._wait_visible(
+        #     self.locators.COMPARE_ROLES,
+        #     required=True,
+        #     name="Compare roles"
+        # )
+        self._click(
+            self.locators.COMPARE_ROLES,
+            required=True,
+            name="Compare roles"
+        )
 
     def click_first_second_checkbox_and_compare(self):
         first = self.page.locator(self.locators.FIRST_FAV_CHECKBOX)

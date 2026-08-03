@@ -18,15 +18,20 @@ class LoginPage(BasePage):
         except Exception:
             login_btn.click(timeout=5000, force=True)
 
-    def enter_email(self, email):
-        self.fill(self.locators.EMAIL_INPUT, email)
+    def enter_email(self, EMAIL):
+        self.click(self.locators.CONTINUE_WITH_EMAIL, timeout=5000)
+        self.fill(self.locators.EMAIL_INPUT, EMAIL)
+        self.click(self.locators.NEXT_BUTTON, timeout=5000)
 
     def enter_password(self, password):
         self.fill(self.locators.PASSWORD_INPUT, password)
 
     def click_login(self):
-        sign_in_btn = self.page.locator(self.locators.SIGN_IN).first
-        login_submit_btn = self.page.locator(self.locators.LOGIN_BUTTON).last
+        sign_in_btn = self.page.locator(self.locators.LOGIN_BUTTON).first
+        # Use the dedicated LOGIN locator for the modal's submit button
+        # instead of indexing LOGIN_BUTTON with .last — relying on
+        # positional ordering is fragile if the DOM structure shifts.
+        login_submit_btn = self.page.locator(self.locators.LOGIN)
 
         try:
             sign_in_btn.wait_for(state="visible", timeout=3000)
@@ -51,7 +56,11 @@ class LoginPage(BasePage):
         )
 
     def open_profile_menu(self):
-        profile = self.page.locator(self.locators.PROFILE_MENU).first
+        # MY_PROFILE is the profile container that opens the menu when
+        # clicked. PROFILE_MENU was referenced here previously but was
+        # never defined in login_locators, which would raise an
+        # AttributeError as soon as logout() ran.
+        profile = self.page.locator(self.locators.MY_PROFILE).first
         profile.wait_for(state="visible", timeout=15000)
         try:
             profile.click(timeout=5000)

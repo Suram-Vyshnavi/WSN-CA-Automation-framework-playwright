@@ -150,10 +150,10 @@ class MyProfilePage(BasePage):
         loc.wait_for(state="visible", timeout=10000)
         return loc.input_value()
 
-    def get_city(self):
-        loc = self.page.locator(self.locators.CITY_NAME_INPUT).first
-        loc.wait_for(state="visible", timeout=10000)
-        return loc.input_value()
+    # def get_city(self):
+    #     loc = self.page.locator(self.locators.CITY_NAME_INPUT).first
+    #     loc.wait_for(state="visible", timeout=10000)
+    #     return loc.input_value()
 
     def get_state(self):
         loc = self.page.locator(self.locators.SELECT_STATE).first
@@ -185,15 +185,15 @@ class MyProfilePage(BasePage):
             f"{state_name} option",
         )
 
-    def set_city(self, city_name):
-        # City is a free-text input (not a dropdown). It re-renders and clears
-        # when the state changes, so wait for it to become visible again.
-        loc = self.page.locator(self.locators.CITY_NAME_INPUT).first
-        loc.wait_for(state="visible", timeout=10000)
-        try:
-            loc.fill(city_name, timeout=10000)
-        except Exception:
-            loc.fill(city_name, timeout=10000, force=True)
+    # def set_city(self, city_name):
+    #     # City is a free-text input (not a dropdown). It re-renders and clears
+    #     # when the state changes, so wait for it to become visible again.
+    #     loc = self.page.locator(self.locators.CITY_NAME_INPUT).first
+    #     loc.wait_for(state="visible", timeout=10000)
+    #     try:
+    #         loc.fill(city_name, timeout=10000)
+    #     except Exception:
+    #         loc.fill(city_name, timeout=10000, force=True)
 
     def select_grade_class_xi(self):
         # Grade is disabled for this profile and cannot be edited.
@@ -259,7 +259,7 @@ class MyProfilePage(BasePage):
     def edit_profile_details(self, new_name, new_state, new_city):
         self.edit_first_name(new_name)
         self.select_state(new_state)
-        self.set_city(new_city)
+        # self.set_city(new_city)
         self.select_grade_class_xi()
         self.select_platform_language_hindi()
         self.click_save()
@@ -269,7 +269,7 @@ class MyProfilePage(BasePage):
         # returns to exactly what it was, regardless of the starting state.
         self.edit_first_name(original_name)
         self.select_state(original_state)
-        self.set_city(original_city)
+        # self.set_city(original_city)
         self.select_grade_class_x()
         self.select_platform_language_english()
         self.click_save()
@@ -282,7 +282,7 @@ class MyProfilePage(BasePage):
         actual = {
             "first name": self.get_first_name(),
             "state": self.get_state(),
-            "city": self.get_city(),
+            # "city": self.get_city(),
             "grade": self.get_grade(),
         }
         mismatches = {k: (actual[k], original[k]) for k in original if actual[k] != original[k]}

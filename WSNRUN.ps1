@@ -32,13 +32,39 @@ $env:PYTHONIOENCODING = "utf-8"
 $ErrorActionPreference = "Continue"
 
 # ── Prepare output directories ────────────────────────────────────────────────
+# Old report files are removed (not just left for behave to overwrite) because a
+# leftover file from a prior run that's still mid-release by the OS (transient
+# lock right after that process exits) can cause behave to write into a
+# non-empty file instead of a fresh one - corrupting all.json with old+new JSON
+# concatenated, which then silently breaks the combined dashboard's metrics.
+# Retry on a lock instead of silently giving up (previous behavior swallowed
+# the failure via -ErrorAction SilentlyContinue and let that corruption happen).
+function Remove-ReportFilesWithRetry([string]$Dir, [string]$Filter) {
+    $files = Get-ChildItem -Path $Dir -Filter $Filter -ErrorAction SilentlyContinue
+    foreach ($file in $files) {
+        $attempts = 0
+        while ($attempts -lt 10) {
+            try {
+                Remove-Item -Path $file.FullName -Force -ErrorAction Stop
+                break
+            } catch {
+                $attempts++
+                if ($attempts -ge 10) {
+                    throw "Could not remove stale report file '$($file.FullName)' - it is still locked by another process (e.g. a previous run still shutting down). Close whatever holds it open and re-run. $_"
+                }
+                Start-Sleep -Milliseconds 500
+            }
+        }
+    }
+}
+
 $jsonReportDir = "reports/json-report"
 New-Item -ItemType Directory -Path $jsonReportDir -Force | Out-Null
-Get-ChildItem -Path $jsonReportDir -Filter "*.json" -ErrorAction SilentlyContinue | Remove-Item -Force
+Remove-ReportFilesWithRetry -Dir $jsonReportDir -Filter "*.json"
 
 $htmlFeatureDir = "reports/html-report/features"
 New-Item -ItemType Directory -Path $htmlFeatureDir -Force | Out-Null
-Get-ChildItem -Path $htmlFeatureDir -Filter "*.html" -ErrorAction SilentlyContinue | Remove-Item -Force
+Remove-ReportFilesWithRetry -Dir $htmlFeatureDir -Filter "*.html"
 
 New-Item -ItemType Directory -Path "reports/allure-results" -Force | Out-Null
 

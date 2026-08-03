@@ -1,4 +1,4 @@
-"""
+""""
 Combine individual per-feature behave reports into one executive QA dashboard.
 
 The combined report has two layers:
@@ -205,6 +205,31 @@ def _scenario_status(el: dict) -> str:
     return "passed"
 
 
+def load_failures(json_file: str) -> dict:
+    """Load features/environment.py's failures.json (written in after_all), keyed by
+    (feature name, scenario name).
+
+    Steps that fail "softly" (caught and recorded by new_user_steps._run so the
+    scenario keeps running instead of aborting) never show up as a failed step in
+    behave's own JSON report - every step reports "passed" there - so
+    load_modules() below has no error text to work with for those scenarios. This
+    sidecar file is how the real failure reason (and screenshot path) recorded by
+    the environment hooks reaches the dashboard.
+    """
+    failures_path = Path(json_file).parent / "failures.json"
+    if not failures_path.exists():
+        return {}
+    try:
+        items = json.loads(failures_path.read_text(encoding="utf-8", errors="replace"))
+    except Exception:
+        return {}
+    out = {}
+    for item in items or []:
+        key = (item.get("feature") or "", item.get("scenario") or "")
+        out[key] = item
+    return out
+
+
 def load_modules(json_file: str) -> dict:
     """Parse a single behave JSON report into per-module (per-feature) summary dicts."""
     try:
@@ -213,6 +238,7 @@ def load_modules(json_file: str) -> dict:
         print(f"Could not parse JSON {json_file}: {e}")
         return {}
 
+    failures_by_key = load_failures(json_file)
     out = {}
     for feature in (data if isinstance(data, list) else []):
         feature_name = feature.get("name", "")
@@ -228,21 +254,52 @@ def load_modules(json_file: str) -> dict:
             duration = 0.0
             failed_step = ""
             error_text = ""
-            for step in el.get("steps", []):
+            steps = el.get("steps", []) or []
+            step_total = len(steps)
+            step_passed = 0
+            step_failed = 0
+            step_skipped = 0
+            for step in steps:
                 res = step.get("result", {}) or {}
+                sstat = res.get("status", "")
                 duration += float(res.get("duration") or 0.0)
-                if res.get("status") in ("failed", "error") and not failed_step:
+                if sstat == "passed":
+                    step_passed += 1
+                elif sstat in ("failed", "error"):
+                    step_failed += 1
+                elif sstat in ("skipped", "untested", ""):
+                    step_skipped += 1
+                if sstat in ("failed", "error") and not failed_step:
                     failed_step = f"{step.get('keyword', '').strip()} {step.get('name', '').strip()}".strip()
                     msg = res.get("error_message")
                     error_text = "\n".join(msg) if isinstance(msg, list) else str(msg or "")
+
+            scenario_name = el.get("name", "(unnamed scenario)")
+            screenshot = None
+            # Soft-fail scenarios (see new_user_steps._run): every individual step
+            # reports "passed" in behave's JSON even though the scenario itself was
+            # marked failed afterwards, so error_text is empty above. Recover the
+            # real reason (and screenshot) from the sidecar failures.json instead.
+            if status in ("failed", "error") and not error_text:
+                match = failures_by_key.get((feature_name, scenario_name))
+                if match:
+                    error_text = match.get("error") or error_text
+                    failed_step = failed_step or "(soft-fail — see failure reason)"
+                    screenshot = match.get("screenshot")
+
             scenarios.append({
-                "name": el.get("name", "(unnamed scenario)"),
+                "name": scenario_name,
                 "feature": feature_name,
                 "status": status,
                 "duration": duration,
                 "failed_step": failed_step,
                 "error": error_text,
+                "screenshot": screenshot,
                 "category": _categorize_failure(error_text) if status in ("failed", "error") else "",
+                "step_total": step_total,
+                "step_passed": step_passed,
+                "step_failed": step_failed,
+                "step_skipped": step_skipped,
             })
         out[module_name] = {
             "scenarios": scenarios,
@@ -253,6 +310,10 @@ def load_modules(json_file: str) -> dict:
             "errored": sum(1 for s in scenarios if s["status"] == "error"),
             "skipped": sum(1 for s in scenarios if s["status"] == "skipped"),
             "duration": sum(s["duration"] for s in scenarios),
+            "step_total": sum(s["step_total"] for s in scenarios),
+            "step_passed": sum(s["step_passed"] for s in scenarios),
+            "step_failed": sum(s["step_failed"] for s in scenarios),
+            "step_skipped": sum(s["step_skipped"] for s in scenarios),
         }
     return out
 
@@ -430,11 +491,13 @@ def _scenario_table(modules: dict, ordered_names: list) -> str:
             icon = STATUS_ICONS.get(st, "")
             outcome, reason = _friendly_result(s)
             reason_cell = _esc(reason) if reason else '<span class="muted">—</span>'
+            steps_cell = f'{s["step_passed"]}/{s["step_total"]}'
             rows += (
                 f'<tr data-status="{st}" data-module="{_esc(name)}">'
                 f'<td>{_esc(s["name"])}</td>'
                 f'<td>{_esc(label)}</td>'
                 f'<td><span class="status-tag {st}">{icon} {st.title()}</span></td>'
+                f'<td>{_esc(steps_cell)}</td>'
                 f'<td>{_fmt_duration(s["duration"])}</td>'
                 f'<td>{_esc(outcome)}</td>'
                 f'<td class="reason-cell">{reason_cell}</td></tr>'
@@ -450,7 +513,7 @@ def _scenario_table(modules: dict, ordered_names: list) -> str:
     return (
         f'<a id="detailed"></a>{filters}'
         '<div class="panel"><table class="grid" id="scenario-table"><thead><tr>'
-        '<th>Scenario</th><th>Module</th><th>Status</th><th>Execution Time</th>'
+        '<th>Scenario</th><th>Module</th><th>Status</th><th>Steps (Passed/Total)</th><th>Execution Time</th>'
         '<th>Outcome</th><th>Failure Reason</th>'
         f'</tr></thead><tbody>{rows}</tbody></table></div>'
     )
@@ -547,6 +610,7 @@ body { margin: 0; font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background
 .kpi-card.skip  { border-top-color: #90a0bf; } .kpi-card.skip .kpi-val  { color: #5a6785; }
 .kpi-card.pct   { border-top-color: var(--wf-red); } .kpi-card.pct .kpi-val   { color: var(--wf-red); }
 .kpi-card.dur   { border-top-color: #00838f; } .kpi-card.dur .kpi-val   { color: #00838f; font-size: 22px; }
+.kpi-card.steps { border-top-color: #6a4fb3; } .kpi-card.steps .kpi-val { color: #6a4fb3; }
 a.kpi-card { text-decoration: none; color: inherit; cursor: pointer; transition: box-shadow .15s, transform .15s; }
 a.kpi-card:hover { box-shadow: 0 6px 16px rgba(20,30,80,0.16); transform: translateY(-2px); }
 
@@ -695,10 +759,16 @@ def render_dashboard(modules: dict, env: str, generated_at: str, history: list) 
     errored = sum(p["errored"] for p in modules.values())
     skipped = sum(p["skipped"] for p in modules.values())
     duration = sum(p["duration"] for p in modules.values())
+    step_total = sum(p["step_total"] for p in modules.values())
+    step_passed = sum(p["step_passed"] for p in modules.values())
+    step_failed = sum(p["step_failed"] for p in modules.values())
+    step_skipped = sum(p["step_skipped"] for p in modules.values())
     pass_pct = _pct(passed, total)
     summary = {
         "total": total, "passed": passed, "failed": failed, "errored": errored,
         "skipped": skipped, "duration": duration, "pass_pct": pass_pct,
+        "step_total": step_total, "step_passed": step_passed,
+        "step_failed": step_failed, "step_skipped": step_skipped,
     }
 
     ordered_names = [n for n in MODULE_ORDER if n in modules]
@@ -714,6 +784,8 @@ def render_dashboard(modules: dict, env: str, generated_at: str, history: list) 
             "errored": p["errored"], "skipped": p["skipped"],
             "pass_pct": _pct(p["passed"], p["total"]),
             "duration": p["duration"],
+            "step_total": p["step_total"], "step_passed": p["step_passed"],
+            "step_failed": p["step_failed"], "step_skipped": p["step_skipped"],
         })
 
     # ── KPI cards ──
@@ -723,7 +795,8 @@ def render_dashboard(modules: dict, env: str, generated_at: str, history: list) 
         f'<a class="kpi-card pass" href="#detailed" onclick="filterScenarios(\'passed\')"><div class="kpi-val">{passed}</div><div class="kpi-lbl">Passed ▸</div></a>'
         f'<a class="kpi-card fail" href="#detailed" onclick="filterScenarios(\'failed\')"><div class="kpi-val">{failed + errored}</div><div class="kpi-lbl">Failed / Error ▸</div></a>'
         f'<a class="kpi-card skip" href="#detailed" onclick="filterScenarios(\'skipped\')"><div class="kpi-val">{skipped}</div><div class="kpi-lbl">Skipped ▸</div></a>'
-        f'<div class="kpi-card pct"><div class="kpi-val">{pass_pct}%</div><div class="kpi-lbl">Pass Percentage</div></div>'
+        f'<div class="kpi-card pct"><div class="kpi-val">{pass_pct}%</div><div class="kpi-lbl">Scenario Pass %</div></div>'
+        f'<div class="kpi-card steps"><div class="kpi-val">{step_passed}/{step_total}</div><div class="kpi-lbl">Test Steps Passed ({_pct(step_passed, step_total)}%)</div></div>'
         f'<div class="kpi-card dur"><div class="kpi-val">{_fmt_duration(duration)}</div><div class="kpi-lbl">Execution Duration</div></div>'
         '</div>'
     )
@@ -772,25 +845,37 @@ def render_dashboard(modules: dict, env: str, generated_at: str, history: list) 
     )
 
     # ── Module coverage table ──
+    # "Pass %" is scenario-level (all-or-nothing per scenario), which reads as a
+    # flat 0% for a module built from one long end-to-end scenario (e.g. New User
+    # Journey) even when nearly every step in it succeeded. "Step Pass %" is
+    # shown alongside it so that partial progress within a failed scenario is
+    # still visible instead of looking like nothing ran.
     cov_rows = ""
     for r in module_rows:
         cls = "g" if r["pass_pct"] >= 95 else ("y" if r["pass_pct"] >= 75 else "r")
+        step_pct = _pct(r["step_passed"], r["step_total"])
+        step_cls = "g" if step_pct >= 95 else ("y" if step_pct >= 75 else "r")
         nm = r["name"]
         cov_rows += (
             f'<tr><td><a class="mod-link" href="#detailed" onclick="filterScenarios(\'all\',\'{nm}\')"><b>{_esc(r["label"])}</b></a></td><td>{r["total"]}</td>'
+            f'<td>{r["step_total"]}</td>'
             f'<td><a class="pillp g" href="#detailed" onclick="filterScenarios(\'passed\',\'{nm}\')">{r["passed"]}</a></td>'
             f'<td><a class="pillp r" href="#detailed" onclick="filterScenarios(\'failed\',\'{nm}\')">{r["failed"] + r["errored"]}</a></td>'
             f'<td><span class="pillp {"g" if r["skipped"]==0 else "y"}">{r["skipped"]}</span></td>'
             f'<td><span class="pillp {cls}">{r["pass_pct"]}%</span></td>'
+            f'<td><span class="pillp {step_cls}">{r["step_passed"]}/{r["step_total"]} ({step_pct}%)</span></td>'
             f'<td>{_fmt_duration(r["duration"])}</td></tr>'
         )
     cov_rows += (
-        f'<tr class="total-row"><td>TOTAL</td><td>{total}</td><td>{passed}</td>'
-        f'<td>{failed + errored}</td><td>{skipped}</td><td>{pass_pct}%</td><td>{_fmt_duration(duration)}</td></tr>'
+        f'<tr class="total-row"><td>TOTAL</td><td>{total}</td><td>{step_total}</td><td>{passed}</td>'
+        f'<td>{failed + errored}</td><td>{skipped}</td><td>{pass_pct}%</td>'
+        f'<td>{step_passed}/{step_total} ({_pct(step_passed, step_total)}%)</td>'
+        f'<td>{_fmt_duration(duration)}</td></tr>'
     )
     module_coverage = (
         '<div class="panel"><table class="grid"><thead><tr>'
-        '<th>Module</th><th>Total</th><th>Passed</th><th>Failed/Error</th><th>Skipped</th><th>Pass %</th><th>Duration</th>'
+        '<th>Module</th><th>Scenarios</th><th>Test Steps</th><th>Passed</th><th>Failed/Error</th><th>Skipped</th>'
+        '<th>Scenario Pass %</th><th>Step Pass %</th><th>Duration</th>'
         f'</tr></thead><tbody>{cov_rows}</tbody></table></div>'
     )
 
@@ -840,11 +925,19 @@ def _failure_categories(modules: dict) -> dict:
 
 
 def _render_pivots(module_rows: list, modules: dict, env_display: str) -> str:
-    mvp = [[r["label"], r["passed"], r["failed"] + r["errored"], r["skipped"], f'{r["pass_pct"]}%'] for r in module_rows]
-    p1 = _pivot_table("Module vs Pass / Fail", ["Module", "Passed", "Failed", "Skipped", "Pass %"], mvp)
+    # Scenario Pass % is all-or-nothing per scenario, so a single long scenario
+    # (e.g. New User Journey) reads as a flat 0% even when most of its steps
+    # passed. Step Pass % is included so that partial progress is still visible.
+    mvp = [
+        [r["label"], r["passed"], r["failed"] + r["errored"], r["skipped"], f'{r["pass_pct"]}%',
+         f'{r["step_passed"]}/{r["step_total"]} ({_pct(r["step_passed"], r["step_total"])}%)']
+        for r in module_rows
+    ]
+    p1 = _pivot_table("Module vs Pass / Fail",
+                      ["Module", "Passed", "Failed", "Skipped", "Scenario Pass %", "Step Pass %"], mvp)
 
-    fec = [[r["label"], r["total"]] for r in module_rows]
-    p2 = _pivot_table("Feature vs Execution Count", ["Feature", "Scenarios Executed"], fec)
+    fec = [[r["label"], r["total"], r["step_total"]] for r in module_rows]
+    p2 = _pivot_table("Feature vs Execution Count", ["Feature", "Scenarios Executed", "Test Steps Executed"], fec)
 
     tot_p = sum(r["passed"] for r in module_rows)
     tot_f = sum(r["failed"] + r["errored"] for r in module_rows)
@@ -871,18 +964,25 @@ def _render_failures(modules: dict, ordered_names: list) -> str:
             outcome, reason = _friendly_result(s)
             kind = ("Application / Validation failure" if s["status"] == "failed"
                     else "Automation / Environment error")
+            shot = s.get("screenshot")
+            shot_link = (
+                f'<a class="fail-link" href="{_esc(shot)}" target="_blank">View failure screenshot ▸</a>'
+                if shot else ""
+            )
             cards.append(
                 f'<div class="fail-card {"error" if s["status"]=="error" else ""}">'
                 f'<div class="fail-head"><span class="fail-name">{_esc(s["name"])}</span>'
                 f'<span class="fail-meta">Module: <b>{_esc(label)}</b> · '
                 f'<span class="fail-cat">{_esc(s["category"] or "Unknown")}</span> · '
+                f'Steps: <b>{s["step_passed"]}/{s["step_total"]}</b> · '
                 f'{_fmt_duration(s["duration"])}</span></div>'
                 f'<div class="fail-kind">{_esc(kind)}</div>'
                 f'<div class="fail-outcome">What happened: {_esc(outcome)}</div>'
                 f'<div class="fail-reason">Failure reason: <b>{_esc(reason)}</b></div>'
                 f'<div class="fail-step">Technical step (for engineers): <b>{_esc(s["failed_step"] or "—")}</b></div>'
                 f'<div class="fail-trace">{err}</div>'
-                f'<a class="fail-link" onclick="showTab(\'all\', true)">View full steps &amp; screenshot ▸</a></div>'
+                f'{shot_link}'
+                f'<a class="fail-link" onclick="showTab(\'all\', true)">View full steps ▸</a></div>'
             )
     if not cards:
         return '<div class="empty-note">🎉 No failures — all executed scenarios passed.</div>'
@@ -1011,7 +1111,9 @@ def build_combined(json_file: str, html_file: str, output_file: str, env: str = 
     if summary:
         print(f"Scenarios: {summary['total']} | Passed: {summary['passed']} | "
               f"Failed/Error: {summary['failed'] + summary['errored']} | "
-              f"Skipped: {summary['skipped']} | Pass: {summary['pass_pct']}%")
+              f"Skipped: {summary['skipped']} | Pass: {summary['pass_pct']}% | "
+              f"Steps: {summary['step_total']} (Passed: {summary['step_passed']}, "
+              f"Failed: {summary['step_failed']}, Skipped: {summary['step_skipped']})")
     return 0
 
 

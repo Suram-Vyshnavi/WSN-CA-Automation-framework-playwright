@@ -1,6 +1,11 @@
+import re
+from pathlib import Path
+
 from behave import then
 
 from pages.student.new_user_page import NewUserPage
+
+SCREENSHOT_DIR = Path("reports/html-report/screenshots")
 
 # NOTE: Steps for answering the interests/aptitudes/values questionnaires use the
 # same wording as the homepage scenario, so they are already defined in
@@ -31,6 +36,18 @@ def _run(context, action, name):
     except Exception as exc:  # noqa: BLE001 - intentionally broad: keep the run going
         print(f"[FAIL] {name}: {exc}")
         context.step_failures.append(f"{name}: {exc}")
+        # environment.py's after_scenario only screenshots once, at the very end
+        # of the whole scenario - by then later steps have moved the page well
+        # past whatever was actually on screen when THIS step failed. Capture
+        # one here, at the moment of failure, so a soft-failure that happens
+        # mid-journey (e.g. the first job's Save/Back buttons never appearing)
+        # can actually be diagnosed instead of guessed at.
+        try:
+            SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+            slug = re.sub(r"[^a-zA-Z0-9._-]+", "_", name)[:80]
+            context.page.screenshot(path=str(SCREENSHOT_DIR / f"stepfail_{slug}.png"))
+        except Exception:
+            pass
 
 
 @then("user clicks on create new button and enters the email")
@@ -39,13 +56,13 @@ def step_click_create_new_and_enter_email(context):
          "create new + enter email")
 
 
-@then("user clicks on generate OTP button and enters the OTP and clicks on submit button")
+@then("user clicks on generate OTP button and enters the OTP and clicks on verify button")
 def step_click_generate_otp_enter_otp_submit(context):
     _run(context, _new_user_page(context).click_generate_otp_enter_otp_submit,
-         "generate OTP + OTP + submit + set password")
+         "generate OTP + OTP + verify + set password")
 
 
-@then("user fills all the details name,state,city,grade, school name,platform language and clicks on submit button")
+@then("user fills all the details name,state,grade, school name,checkbox and clicks on submit button")
 def step_fill_personal_details(context):
     _run(context, _new_user_page(context).fill_personal_details, "fill personal details")
 
@@ -71,10 +88,16 @@ def step_click_questionnaire_card_start_now(context):
          "questionnaire Start Now")
 
 
-@then("user clicks on one pick male character image and clicks on start now button")
+@then("user clicks on one pick male character image")
 def step_pick_male_character_and_start_now(context):
     _run(context, _new_user_page(context).pick_male_character_and_start_now,
          "pick male character + Start Now")
+
+
+@then("user answers all the questionnaire questions until the profile setup is completed")
+def step_answer_all_questionnaire_questions(context):
+    _run(context, _new_user_page(context).answer_all_questionnaire_questions,
+         "answer all questionnaire questions")
 
 
 @then("user clicks on pick roles card")

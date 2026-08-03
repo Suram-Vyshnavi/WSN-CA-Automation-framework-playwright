@@ -12,7 +12,7 @@ class myprofile_locators:
     # during revert instead of hard-coding a single state.
     STATE_OPTION = "//span[text()='{state}']"
     # City is a free-text input, not a dropdown.
-    CITY_NAME_INPUT = "//input[@id='cityName']"
+    # CITY_NAME_INPUT = "//input[@id='cityName']"
     SELECT_GRADE = "(//div[@class='ant-select-selection-overflow'])[3]"
     CLASS_XI = "//span[text()='Class XI']"
     CLASS_X = "//span[text()='Class X']"

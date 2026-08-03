@@ -13,12 +13,12 @@ class HomePageLocators:
     BUSINESS_AND_MARKETING_HEADER = "//span[text()='Business & Marketing']"
     E_COMMERCE_OPTION = "//span[text()='E‑commerce']"
     SUBMIT_BUTTON = "//button[text()='Submit']"
-    # The Questionnaires (Level 2) accordion header inside the Self Review panel.
+    # The Profile (Level 2) accordion header inside the Self Review panel.
     # Expanding it reveals the Interests / Aptitudes / Values cards. The text node
     # carries surrounding whitespace, so match with normalize-space().
-    QUESTIONNAIRES_HEADER = "//h4[normalize-space()='Questionnaires']"
+    PROFILE_HEADER = "//h4[normalize-space()='Profile']"
 
-    # Questionnaire cards (one per assessment)
+    # Profile cards (one per assessment)
     INTERESTS_CARD = "(//img[@class='wf_image qmc-icon no-js-svg%3e'])[1]"
     APTITUDES_CARD = "(//div[@class='questionnaire-mini-card qmc-completed'])[2]"
     VALUES_CARD = "(//div[@class='questionnaire-mini-card qmc-completed'])[3]"
@@ -37,7 +37,7 @@ class HomePageLocators:
     # The questionnaire (scenario) flow advances with a "Next >" span; the slider
     # flow further down uses a "Next" button, so keep them under distinct names
     # (otherwise the later NEXT_BUTTON definition shadows this one).
-    QUESTIONNAIRE_NEXT_BUTTON = "//span[text()='Next >']"
+    # QUESTIONNAIRE_NEXT_BUTTON = "//span[text()='Next >']"
     FUN_EMOJI_CARD="(//div[@class='fun-meter-card-h'])[2]"
     TWO_CARDS_PRESENT="(//div[@class='forced-card selected'])[1]"
     # Answer-card layouts vary per question (multi-card scenario, emoji fun-meter,
@@ -53,11 +53,11 @@ class HomePageLocators:
     # Final scenario question shows "Submit" (a span, inside the iframe) instead
     # of "Next >". Distinct name so the slider flow's button-based SUBMIT_BUTTON
     # further down doesn't shadow it.
-    QUESTIONNAIRE_SUBMIT_BUTTON = "//span[text()='Submit']"
+    # QUESTIONNAIRE_SUBMIT_BUTTON = "//span[text()='Submit']"
     #after completing the aptitude questionnaire, the Start Aptitudes button appears
-    START_APTITUDES = "//span[text()='Start Aptitudes']"
-    #after completing the values questionnaire, the Start Values button appears
-    START_VALUES = "//span[text()='Start Values']"
+    START_APTITUDES = "(//button[text()='Choose'])[1]"
+    # #after completing the values questionnaire, the Start Values button appears
+    START_VALUES = "(//button[text()='Choose'])[1]"
 
 
     # Shared questionnaire flow elements (identical across all three assessments)
@@ -109,8 +109,8 @@ class HomePageLocators:
     VALIDATE_RESULTS_HEADER = "//h4[text()='Results']/following::h4[1]"
     ADD_SAVE = "(//h4[text()='Save'])[1]"
     FIRST_RESULT_SAVED_STATE = "(//h4[text()='Saved'])[1]"
-    SAVED_MENU_HEADER="//div[@class='menu-container  selected']"
-    COMPARE_ROLES = "//button[text()='Compare roles']"
+    SAVED_MENU_HEADER="//div[text()='Saved']"
+    COMPARE_ROLES = "//button[@class='compare-sticky-strip__btn']"
     FIRST_FAV_CHECKBOX = "(//div[@class='fav-checkbox'])[1]"
     SECOND_FAV_CHECKBOX = "(//div[@class='fav-checkbox'])[2]"
     COMPARE_BUTTON = "//button[contains(text(),'Compare')]"

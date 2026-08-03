@@ -72,7 +72,16 @@ def _scenario_error(scenario):
 
 
 def before_all(context):
-    """Capture the execution context, start the shared browser and login once."""
+    """Capture the execution context and start the shared browser.
+
+    Login is NOT done here: it used to run unconditionally, which meant even
+    a New-User-only run (behave features/newuser.feature) started by logging
+    in with the existing dev credentials before the first scenario got a
+    chance to log back out. Login now only happens in before_scenario, and
+    only for scenarios that actually need an authenticated session (i.e. not
+    the New User journey), so a New User run never touches the existing
+    account at all.
+    """
     RUN["start"] = datetime.datetime.now()
     RUN["env"] = Config.ENVIRONMENT
     RUN["url"] = Config.BASE_URL
@@ -85,16 +94,10 @@ def before_all(context):
     RUN["commit"] = _git("rev-parse", "--short", "HEAD")
     RUN["browser"] = _browser_version()
 
-    # Open the browser ONCE and login — shared across every scenario in the run.
+    # Open the browser ONCE — shared across every scenario in the run.
     factory = PlaywrightFactory()
     context.playwright, context.browser, context.context, context.page = factory.start()
     context.login_page = LoginPage(context.page)
-    context.login_page.goto(Config.BASE_URL)
-    try:
-        context.login_page.click_no_thanks()
-    except Exception:
-        pass
-    context.login_page.ensure_logged_in(Config.USERNAME, Config.PASSWORD)
 
 
 def after_all(context):
@@ -109,6 +112,30 @@ def after_all(context):
         context.context.close()
         context.browser.close()
         context.playwright.stop()
+    except Exception:
+        pass
+    _write_failures_json()
+
+
+def _write_failures_json():
+    """Persist RUN["failures"] next to the JSON report.
+
+    The combine_feature_reports.py dashboard runs as a separate process after
+    behave exits, so it has no access to RUN (which only lives in this
+    process's memory). Steps that fail "softly" (caught and recorded by
+    new_user_steps._run so the scenario keeps running - see that module) never
+    show up as a failed step in behave's own JSON report, so without this file
+    the dashboard has no error text to show for them at all - just a generic
+    "No technical details were captured." This file is how that real error
+    (and the screenshot path) reaches the dashboard.
+    """
+    try:
+        import json
+        out_dir = Path("reports/json-report")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "failures.json").write_text(
+            json.dumps(RUN.get("failures") or [], indent=2), encoding="utf-8"
+        )
     except Exception:
         pass
 
@@ -137,10 +164,24 @@ def before_scenario(context, scenario):
         try:
             if context.login_page.is_logged_in():
                 context.login_page.logout()
+                # logout() lands on a /logout route that auto-opens the sign-in
+                # modal (Continue with Google/WhatsApp/Email), not the landing
+                # page's "Create Now" button. Re-navigate to the landing page so
+                # the New User journey starts from the right screen.
+                context.login_page.goto(Config.BASE_URL)
+                context.login_page.click_no_thanks()
         except Exception:
             pass
     else:
         context.login_page.ensure_logged_in(Config.USERNAME, Config.PASSWORD)
+        # The "No thanks" web-push prompt renders on the homepage right after
+        # login (not on the pre-login landing page, where the earlier call
+        # above is a no-op) - dismiss it here so it can't float over the
+        # homepage's own controls for the rest of the scenario.
+        try:
+            context.login_page.click_no_thanks()
+        except Exception:
+            pass
 
 
 def after_scenario(context, scenario):
